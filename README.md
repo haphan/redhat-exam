@@ -4,10 +4,11 @@
 
 ## Test taking strategy
 
-- Spend 10 mins go read through all the questions before diving into any task.
+- Spend 10 mins to go through all the questions before diving into any task.
 - Understand task dependencies.
-- Nail fown low hanging fruits first.
+- Complete low hanging fruits first.
 - For every task, must validate the work by:
+    - Use validation commands
 	- Connecting to the service from `desktop` machine.
 	- `su` to the user to test `acl` or permission settings.
 
@@ -17,7 +18,6 @@
 man -k . | grep {keyword}
 grep -r {keyword} /usr/share/docs
 ```
-
 
 ## 1. `systemctl` and boot process
 
@@ -42,8 +42,6 @@ systemctl isolate multi-user.target
 ```
 
 #### Recover root password
-
-During boot loader countdown, press any key to interrupt the boot process. Then press `e` to edit the boot record.
 
 Append `rd.break` to the line that starts with `linux16`. Press `control + X` to boot.
 
@@ -77,6 +75,7 @@ Check current network setup
 nmcli dev status
 nmcli con show
 ip a
+ip link
 ```
 
 Adding static connection to interface `eth0`
@@ -88,21 +87,15 @@ nmcli con add con-name my-con-eth0 ifname eth0 type ethernet \
              ip6 abbe::cafe
 
 nmclo con mod my-con-eth0 +ipv4.addresses "10.7.1.2/24"
-
 nmcli con mod my-con-eth0 ipv4.dns "8.8.8.8 8.8.4.4"
-
 nmcli con mod my-con-eth0 +ipv4.dns 1.2.3.4
-
 nmcli con mod my-con-eth0 ipv6.dns "2001:4860:4860::8888 2001:4860:4860::8844"
-
 nmcli con mod my-con-eth0 ipv4.method manual
-
 nmcli -p con show my-con-eth0
-
 nmcli con reload
 ```
 
-Check permanent configuration at
+Validate
 
 ```bash
 cat /etc/sysconfig/network-scripts/ifcfg-my-con-eth0
@@ -117,15 +110,17 @@ nmcli con mod team0 ipv4.method manual
 
 nmcli con add type team-slave con-name team0-port1 ifname eno1 master team0
 nmcli con add type team-slave con-name team0-port2 ifname eno2 master team0
+```
 
+Validate
+
+```bash
 teamdctl team0 state
 ```
 
 Available runner types: `boardcast`, `roundrobin`, `activebackup`, `loadbalance`, `lacp`
 
 #### Bridging
-
-
 
 **Grading checks**
 ```bash
@@ -148,19 +143,30 @@ brctl show
 ```
 
 
-## 3. `hostnamectl`
-
-Check current hostname
-
-```bash
-hostnamectl status
-```
-
-Update hostname
+## 3. `hostnamectl`, `ntp`
 
 ```bash
 hostnamectl set-hostname demo.example.com
 cat /etc/hostname
+```
+
+```bash
+timedatectl set-ntp true
+timedatectl set-timezone Asia/Singapore
+echo "server classroom.example.com iburst" > /etc/chrony.conf
+systemctl restart chronyd
+chronyc sources -v
+```
+
+Validate NTP sync is working
+```
+timedatectl
+...
+NTP synchronized: yes
+...
+
+# or checking chronyc sources
+chronyc sources -v
 ```
 
 ## 4. `firewall-cmd`
@@ -211,7 +217,7 @@ semanage port --add --proto tcp --type http_port_t 8081
 semenage port --delete --proto tcp --type http_port_t 443
 ```
 
-## 6. Postfix relay
+## 6. Postfix SMTP null client
 
 ```bash
 yum install postfix
@@ -219,7 +225,7 @@ postconf -e "relayhost=[smtp1.example.com]"
 postconf -e "inet_interfaces=loopback-only"
 postconf -e "mydestination="
 postconf -e "local_transport=error: disabled"
-postconf -e "mynetworks=127.0.0.1/8 [::1]/128
+postconf -e "mynetworks=127.0.0.1/8 [::1]/128"
 systemctl restart postfix
 ```
 
@@ -264,7 +270,7 @@ firewall-cmd --permanent --add-port 3260/tcp
 **Client**
 
 ```bash
-yum install iscsi-initialtor-utils
+yum install iscsi-initiator-utils
 systemctl enable iscsi.service
 systemctl start iscsi.service
 iscsiadm -m discovery -t st -p "server1.example.com:3260"
@@ -428,7 +434,6 @@ Sample virtualhost config with SSL
     SSLCertificateKeyFile '/etc/pki/tls/private/webapp1.key'
     SSLCertificateChainFile '/etc/pki/tls/certs/ca-example.crt'
     DocumentRoot /srv/webapp1/www
-    DirectoryIndex index.html index.php
 </VirtualHost>
 <Directory /srv/webapp/www>
     Require grant alll
@@ -443,6 +448,46 @@ WSGIScriptAlias /myapp/ /srv/myapp/www/myapp.py
 Validate
 ```bash
 curl -cacert -vvv example-ca.crt https://webapp1.example.com:444
+```
+
+
+## 12. BASH scripting
+
+Special variables available in bash script
+
+- `$#` Number of arg
+- `$*` all args as one word
+- `$@` all args as an array
+
+
+```bash
+if [ "@#" -eq 0 ]; then
+    echo "Some error message"
+    exit 1;
+fi
+```
+
+`switch-case`
+
+```bash
+case "$1" in
+  start)
+	  do-foo
+  ;;
+  reload|restart)
+  	do-bar
+    exit 0
+  ;;
+  *)
+  	do-default-action
+  ;;
+esac
+```
+Text manipulation
+
+```bash
+cat /etc/passwd | cut -d: -f1
+cat /etc/passwd | awk -F: '{print $1}'
 ```
 
 
@@ -465,30 +510,28 @@ semodule -i mypolicy.pp
 ## Appendix B: Gap-filling labs
 
 #### SMB
-```
+
 Create SMB share `smbshare` on serverX using mycompany workgroup
 - member of group `marketing` have rw permission.
 - all users not in `marketing` group have read-only permission.
 - User `brian` is part of marketing team and password is `redhat`.
 - User `rob` has password `redhat`.
-```
+
 
 #### NFS
 
-```
+
 Configure the NFS server on serverX to meet the following requirements:
 
-Share the newly created /krbnfs directory on serverX with krb5p security.
+- Share the newly created /krbnfs directory on serverX with krb5p security.
+- Allow read and write access on the share from the desktopX system.
+- SELinux labels are exported.
 
-Allow read and write access on the share from the desktopX system.
+Preconfigured krb5 keytabs for the `serverX` and `desktopX` systems are available at:
 
-SELinux labels are exported.
+`http://classroom.example.com/pub/keytabs/serverX.keytab.`
+`http://classroom.example.com/pub/keytabs/desktopX.keytab.`
 
-Preconfigured krb5 keytabs for the serverX and desktopX systems are available at:
+Allow access to the NFS service through the firewall.
 
-http://classroom.example.com/pub/keytabs/serverX.keytab.
-
-http://classroom.example.com/pub/keytabs/desktopX.keytab.
-
-Allow access to the NFS service through the firewall.```
 
