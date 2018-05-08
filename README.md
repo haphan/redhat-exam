@@ -436,7 +436,9 @@ Sample virtualhost config with SSL
     DocumentRoot /srv/webapp1/www
 </VirtualHost>
 <Directory /srv/webapp/www>
-    Require grant alll
+    Require all granted
+    # Order allow,deny
+    # Allow from 172.17.0.0/24
 </Directory>
 ```
 
